@@ -15,10 +15,12 @@ import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 import numpy as np
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.style import WD_STYLE_TYPE
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 # Page config
 st.set_page_config(
@@ -153,11 +155,11 @@ Return ONLY the JSON, no other text."""
     return json.loads(text.strip())
 
 def generate_sow_content(model, requirements):
-    """Generate full SOW content"""
-    prompt = f"""You are an expert technical writer for Exotel.
+    """Generate full SOW content in Exotel format"""
+    prompt = f"""You are an expert technical writer for Exotel/Ameyo cloud communications platform.
 
 ## Task
-Generate a detailed Statement of Work based on these requirements.
+Generate a detailed Statement of Work (SOW) based on these requirements, following the exact Exotel SOW format.
 
 ## Requirements:
 {json.dumps(requirements, indent=2)}
@@ -166,41 +168,67 @@ Generate a detailed Statement of Work based on these requirements.
 {json.dumps(MODULE_CATALOG, indent=2)}
 
 ## Output Format:
-Return a JSON object with:
+Return a JSON object with this EXACT structure:
 {{
-    "title": "SOW Title",
-    "customer": "Customer Name",
+    "customer": "Customer Name (short code like TENB)",
+    "customer_full_name": "Full Customer Company Name",
     "project": "Project Name",
     "version": "1.0.0",
-    "date": "{datetime.now().strftime('%Y-%m-%d')}",
-    "executive_summary": "Brief summary of the project",
-    "business_goals": ["Goal 1", "Goal 2"],
-    "scope": {{
-        "in_scope": ["Item 1", "Item 2"],
-        "out_of_scope": ["Item 1"]
-    }},
-    "modules": [
+    "date": "{datetime.now().strftime('%d-%m-%Y')}",
+    "ticket_id": "DCA{datetime.now().strftime('%Y%m%d')}XXXXXX",
+    "created_by": "PS Team",
+    "business_goals": [
         {{
-            "id": "MODULE-ID",
-            "name": "Module Name",
-            "description": "Detailed description",
-            "configuration": "Specific configuration"
+            "sno": "1",
+            "use_case": "Detailed description of the business goal or use case the customer wants to achieve",
+            "deliverables": "What Exotel team will deliver to meet this goal"
         }}
     ],
     "prerequisites": [
-        {{"item": "Description", "owner": "Client/Exotel", "status": "Required"}}
+        "Prerequisite 1 that customer team needs to provide",
+        "Prerequisite 2"
     ],
-    "timeline": [
-        {{"phase": "Phase 1", "activities": "Description", "duration": "X days"}}
+    "deliverables": [
+        {{
+            "title": "Deliverable Title (e.g., Call Transfer from VoiceBot to ECC)",
+            "description": "Detailed multi-paragraph description of what will be implemented, how it works technically, the flow, and expected behavior. Be specific about SIP, API, routing logic, etc."
+        }}
     ],
-    "total_duration": "X days",
-    "assumptions": ["Assumption 1"],
-    "dependencies": ["Dependency 1"],
-    "acceptance_criteria": ["Criteria 1"],
-    "escalation_matrix": [
-        {{"level": "L1", "contact": "Name", "response_time": "X hours"}}
+    "deployment": [
+        "Deployment will be done in a single setup.",
+        "Specific deployment details about campaigns, instances, etc."
+    ],
+    "notes": [
+        "Important note about scope validity",
+        "Note about changes outside SOW being treated as separate service ticket",
+        "This Scope of Work is valid for the next 2 months from the last revision date."
+    ],
+    "assumptions": [
+        "Exotel/Ameyo Setup will be commissioned at the center as per the setup project plan.",
+        "The client team will provide Access while testing and deployment.",
+        "The client team's support might be required for customization activities.",
+        "The environmental prerequisites such as availability of structured data center, power, hardware, and network stability are assumed to be provided by the client."
+    ],
+    "account_manager": {{
+        "name": "Account Manager Name",
+        "email": "email@exotel.com"
+    }},
+    "escalation_scoping": [
+        {{"level": "1", "name": "Name", "phone": "+91 XXXXXXXXXX", "email": "email@exotel.com"}},
+        {{"level": "2", "name": "Name", "phone": "+91 XXXXXXXXXX", "email": "email@exotel.com"}}
+    ],
+    "escalation_deployment": [
+        {{"level": "1", "name": "Name", "phone": "+91 XXXXXXXXXX", "email": "email@exotel.com"}},
+        {{"level": "2", "name": "Name", "phone": "+91 XXXXXXXXXX", "email": "email@exotel.com"}},
+        {{"level": "3", "name": "Name", "phone": "+91 XXXXXXXXXX", "email": "email@exotel.com"}}
     ]
 }}
+
+IMPORTANT:
+- Be very detailed in the deliverables description - write multiple paragraphs explaining the technical implementation
+- Use professional language similar to: "Client team wants to enable...", "The system will...", "During the process..."
+- Include technical details about SIP, API, routing, campaigns where relevant
+- Make assumptions realistic for a cloud communications deployment
 
 Return ONLY the JSON."""
 
@@ -443,154 +471,246 @@ def generate_flowchart_image(flowchart):
 
     return pdf_data, png_data
 
+def set_cell_shading(cell, color):
+    """Set cell background color"""
+    shading = OxmlElement('w:shd')
+    shading.set(qn('w:fill'), color)
+    cell._tc.get_or_add_tcPr().append(shading)
+
 def generate_sow_docx(sow):
-    """Generate a Word document from SOW content"""
+    """Generate a Word document from SOW content in Exotel format"""
     doc = Document()
 
-    # Title
-    title = doc.add_heading(sow.get('title', 'Statement of Work'), 0)
+    # Set page margins
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1)
+        section.right_margin = Inches(0.94)
+
+    # ===== TITLE PAGE =====
+    # Main Title
+    title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = title.add_run("Scope of Work")
+    run.bold = True
+    run.font.size = Pt(28)
+    run.font.color.rgb = RGBColor(0, 51, 102)
 
-    # Document info
+    # Customer Name
+    customer_title = doc.add_paragraph()
+    customer_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = customer_title.add_run(sow.get('customer', 'Customer'))
+    run.bold = True
+    run.font.size = Pt(24)
+    run.font.color.rgb = RGBColor(0, 51, 102)
+
     doc.add_paragraph()
-    info_table = doc.add_table(rows=4, cols=2)
-    info_table.style = 'Table Grid'
 
-    info_data = [
-        ('Customer', sow.get('customer', 'N/A')),
-        ('Project', sow.get('project', 'N/A')),
-        ('Version', sow.get('version', '1.0.0')),
-        ('Date', sow.get('date', datetime.now().strftime('%Y-%m-%d')))
+    # Document Properties Table
+    props_table = doc.add_table(rows=6, cols=2)
+    props_table.style = 'Table Grid'
+
+    props_data = [
+        ('Document Properties', ''),
+        ('Creation Date', sow.get('date', datetime.now().strftime('%d-%m-%Y'))),
+        ('Current Draft', sow.get('version', 'v1.0.0')),
+        ('Modification Date', '-'),
+        ('Ticket ID', sow.get('ticket_id', f"DCA{datetime.now().strftime('%Y%m%d')}000000")),
+        ('Created By', sow.get('created_by', 'PS Team'))
     ]
 
-    for i, (label, value) in enumerate(info_data):
-        row = info_table.rows[i]
+    for i, (label, value) in enumerate(props_data):
+        row = props_table.rows[i]
         row.cells[0].text = label
         row.cells[1].text = value
-        row.cells[0].paragraphs[0].runs[0].bold = True
+        if i == 0:
+            row.cells[0].merge(row.cells[1])
+            row.cells[0].paragraphs[0].runs[0].bold = True
+            set_cell_shading(row.cells[0], 'D9E2F3')
+        else:
+            row.cells[0].paragraphs[0].runs[0].bold = True
 
     doc.add_paragraph()
 
-    # Executive Summary
-    doc.add_heading('Executive Summary', level=1)
-    doc.add_paragraph(sow.get('executive_summary', 'N/A'))
+    # Copyright
+    copyright_table = doc.add_table(rows=1, cols=1)
+    copyright_table.style = 'Table Grid'
+    cell = copyright_table.rows[0].cells[0]
+    cell.text = f"© {datetime.now().year} eXotel, All rights reserved.   CONFIDENTIAL"
+    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    set_cell_shading(cell, 'D9E2F3')
 
-    # Business Goals
-    doc.add_heading('Business Goals', level=1)
-    for goal in sow.get('business_goals', []):
-        doc.add_paragraph(goal, style='List Bullet')
+    # Page break
+    doc.add_page_break()
 
-    # Scope
-    doc.add_heading('Scope', level=1)
-    doc.add_heading('In Scope', level=2)
-    for item in sow.get('scope', {}).get('in_scope', []):
-        doc.add_paragraph(item, style='List Bullet')
+    # ===== DOCUMENT HISTORY =====
+    doc.add_paragraph("Document History").runs[0].bold = True
 
-    doc.add_heading('Out of Scope', level=2)
-    for item in sow.get('scope', {}).get('out_of_scope', []):
-        doc.add_paragraph(item, style='List Bullet')
+    history_table = doc.add_table(rows=2, cols=4)
+    history_table.style = 'Table Grid'
 
-    # Modules
-    doc.add_heading('Modules', level=1)
-    modules = sow.get('modules', [])
-    if modules:
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        header_cells = table.rows[0].cells
-        header_cells[0].text = 'Module ID'
-        header_cells[1].text = 'Name'
-        header_cells[2].text = 'Description'
-        for cell in header_cells:
-            cell.paragraphs[0].runs[0].bold = True
+    headers = ['Version', 'Creation date', 'Created By', 'Summary of changes']
+    for i, header in enumerate(headers):
+        cell = history_table.rows[0].cells[i]
+        cell.text = header
+        cell.paragraphs[0].runs[0].bold = True
+        set_cell_shading(cell, 'D9E2F3')
 
-        for module in modules:
-            row = table.add_row().cells
-            row[0].text = module.get('id', '')
-            row[1].text = module.get('name', '')
-            row[2].text = module.get('description', '')
-
-    # Prerequisites
-    doc.add_heading('Prerequisites', level=1)
-    prereqs = sow.get('prerequisites', [])
-    if prereqs:
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        header_cells = table.rows[0].cells
-        header_cells[0].text = 'Item'
-        header_cells[1].text = 'Owner'
-        header_cells[2].text = 'Status'
-        for cell in header_cells:
-            cell.paragraphs[0].runs[0].bold = True
-
-        for prereq in prereqs:
-            row = table.add_row().cells
-            row[0].text = prereq.get('item', '')
-            row[1].text = prereq.get('owner', '')
-            row[2].text = prereq.get('status', '')
-
-    # Timeline
-    doc.add_heading('Timeline', level=1)
-    timeline = sow.get('timeline', [])
-    if timeline:
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        header_cells = table.rows[0].cells
-        header_cells[0].text = 'Phase'
-        header_cells[1].text = 'Activities'
-        header_cells[2].text = 'Duration'
-        for cell in header_cells:
-            cell.paragraphs[0].runs[0].bold = True
-
-        for phase in timeline:
-            row = table.add_row().cells
-            row[0].text = phase.get('phase', '')
-            row[1].text = phase.get('activities', '')
-            row[2].text = phase.get('duration', '')
+    history_table.rows[1].cells[0].text = sow.get('version', '1.0.0')
+    history_table.rows[1].cells[1].text = sow.get('date', datetime.now().strftime('%d-%m-%Y'))
+    history_table.rows[1].cells[2].text = sow.get('created_by', 'PS Team')
+    history_table.rows[1].cells[3].text = 'Define Scope of Work'
 
     doc.add_paragraph()
-    p = doc.add_paragraph()
-    p.add_run('Total Duration: ').bold = True
-    p.add_run(sow.get('total_duration', 'TBD'))
 
-    # Assumptions
-    doc.add_heading('Assumptions', level=1)
+    # Table of Contents placeholder
+    doc.add_paragraph("Table of Contents").runs[0].bold = True
+    doc.add_paragraph()
+
+    # ===== 1. BUSINESS GOAL VS DELIVERABLES =====
+    h1 = doc.add_heading('1. Business Goal Vs Deliverables', level=1)
+
+    business_goals = sow.get('business_goals', [])
+    if business_goals:
+        bg_table = doc.add_table(rows=1, cols=3)
+        bg_table.style = 'Table Grid'
+
+        headers = ['S.No', 'Business Goal / Use Case', 'Deliverables']
+        for i, header in enumerate(headers):
+            cell = bg_table.rows[0].cells[i]
+            cell.text = header
+            cell.paragraphs[0].runs[0].bold = True
+            set_cell_shading(cell, 'D9E2F3')
+
+        for goal in business_goals:
+            row = bg_table.add_row()
+            row.cells[0].text = str(goal.get('sno', '1'))
+            row.cells[1].text = goal.get('use_case', '')
+            row.cells[2].text = goal.get('deliverables', '')
+
+    doc.add_paragraph()
+
+    # ===== 2. PREREQUISITES & LICENSES =====
+    doc.add_heading('2. Prerequisites & Licenses', level=1)
+
+    customer_name = sow.get('customer', 'Customer')
+    doc.add_paragraph(f'Below are the dependencies on the "{customer_name}" team:')
+    doc.add_paragraph(f'{customer_name} team will be required to provide the below mentioned details:')
+
+    for prereq in sow.get('prerequisites', []):
+        doc.add_paragraph(prereq, style='List Bullet')
+
+    doc.add_paragraph()
+
+    # ===== 3. DETAILS OF DELIVERABLES =====
+    doc.add_heading('3. Details of Deliverables', level=1)
+
+    deliverables = sow.get('deliverables', [])
+    for idx, deliverable in enumerate(deliverables, 1):
+        doc.add_heading(f'3.{idx}. {deliverable.get("title", "Deliverable")}', level=2)
+
+        # Add description paragraphs
+        desc = deliverable.get('description', '')
+        paragraphs = desc.split('\n\n') if '\n\n' in desc else [desc]
+        for para in paragraphs:
+            if para.strip():
+                doc.add_paragraph(para.strip())
+
+    doc.add_paragraph()
+
+    # ===== 4. DEPLOYMENT & UAT INSTANCE =====
+    doc.add_heading('4. Deployment & UAT Instance', level=1)
+
+    for deployment in sow.get('deployment', ['Deployment will be done in a single setup.']):
+        doc.add_paragraph(deployment)
+
+    doc.add_paragraph()
+
+    # ===== 5. NOTES =====
+    doc.add_heading('5. Notes', level=1)
+
+    for note in sow.get('notes', []):
+        doc.add_paragraph(note)
+
+    doc.add_paragraph()
+
+    # ===== 6. ASSUMPTIONS =====
+    doc.add_heading('6. Assumptions', level=1)
+
     for assumption in sow.get('assumptions', []):
-        doc.add_paragraph(assumption, style='List Bullet')
+        doc.add_paragraph(assumption)
 
-    # Dependencies
-    doc.add_heading('Dependencies', level=1)
-    for dep in sow.get('dependencies', []):
-        doc.add_paragraph(dep, style='List Bullet')
+    doc.add_paragraph()
 
-    # Acceptance Criteria
-    doc.add_heading('Acceptance Criteria', level=1)
-    for criteria in sow.get('acceptance_criteria', []):
-        doc.add_paragraph(criteria, style='List Bullet')
+    # ===== 7. ANNEXURE =====
+    doc.add_heading('7. Annexure', level=1)
 
-    # Escalation Matrix
-    doc.add_heading('Escalation Matrix', level=1)
-    escalation = sow.get('escalation_matrix', [])
-    if escalation:
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        header_cells = table.rows[0].cells
-        header_cells[0].text = 'Level'
-        header_cells[1].text = 'Contact'
-        header_cells[2].text = 'Response Time'
-        for cell in header_cells:
+    # 7.1 Account Manager
+    doc.add_heading('7.1. Account Manager from Exotel', level=2)
+    am = sow.get('account_manager', {})
+    doc.add_paragraph(f"             Name: {am.get('name', 'TBD')}")
+    doc.add_paragraph(f"             Email: {am.get('email', 'TBD')}")
+
+    # 7.2 Escalation Matrix for Scoping
+    doc.add_heading('7.2. Escalation Matrix for Scoping', level=2)
+
+    esc_scoping = sow.get('escalation_scoping', [])
+    if esc_scoping:
+        esc_table = doc.add_table(rows=1, cols=4)
+        esc_table.style = 'Table Grid'
+
+        headers = ['Level', 'Name', 'Phone', 'Email ID']
+        for i, header in enumerate(headers):
+            cell = esc_table.rows[0].cells[i]
+            cell.text = header
             cell.paragraphs[0].runs[0].bold = True
+            set_cell_shading(cell, 'D9E2F3')
 
-        for esc in escalation:
-            row = table.add_row().cells
-            row[0].text = esc.get('level', '')
-            row[1].text = esc.get('contact', '')
-            row[2].text = esc.get('response_time', '')
+        for esc in esc_scoping:
+            row = esc_table.add_row()
+            row.cells[0].text = str(esc.get('level', ''))
+            row.cells[1].text = esc.get('name', '')
+            row.cells[2].text = esc.get('phone', '')
+            row.cells[3].text = esc.get('email', '')
+
+    doc.add_paragraph()
+
+    # 7.3 Escalation Matrix for Deployment
+    doc.add_heading('7.3. Escalation Matrix for Deployment', level=2)
+
+    esc_deploy = sow.get('escalation_deployment', [])
+    if esc_deploy:
+        esc_table2 = doc.add_table(rows=1, cols=4)
+        esc_table2.style = 'Table Grid'
+
+        for i, header in enumerate(headers):
+            cell = esc_table2.rows[0].cells[i]
+            cell.text = header
+            cell.paragraphs[0].runs[0].bold = True
+            set_cell_shading(cell, 'D9E2F3')
+
+        for esc in esc_deploy:
+            row = esc_table2.add_row()
+            row.cells[0].text = str(esc.get('level', ''))
+            row.cells[1].text = esc.get('name', '')
+            row.cells[2].text = esc.get('phone', '')
+            row.cells[3].text = esc.get('email', '')
+
+    doc.add_paragraph()
+
+    # 7.4 SOW Approval Procedure
+    doc.add_heading('7.4. SOW Approval Procedure', level=2)
+    doc.add_paragraph("Dear Customer, in order to approve the Scope, kindly click on the approve button on your Salesforce portal.")
 
     # Footer
     doc.add_paragraph()
     footer = doc.add_paragraph()
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer.add_run('Generated by Exotel SOW Generator').italic = True
+    run = footer.add_run('Generated by Exotel SOW Generator')
+    run.italic = True
+    run.font.size = Pt(10)
+    run.font.color.rgb = RGBColor(128, 128, 128)
 
     # Save to BytesIO
     buffer = BytesIO()
@@ -600,60 +720,57 @@ def generate_sow_docx(sow):
 
 def format_sow_markdown(sow):
     """Format SOW as markdown for display"""
-    md = f"""# {sow.get('title', 'Statement of Work')}
+    md = f"""# Scope of Work - {sow.get('customer', 'Customer')}
 
-**Customer:** {sow.get('customer', 'N/A')}
-**Project:** {sow.get('project', 'N/A')}
 **Version:** {sow.get('version', '1.0.0')}
-**Date:** {sow.get('date', datetime.now().strftime('%Y-%m-%d'))}
+**Date:** {sow.get('date', datetime.now().strftime('%d-%m-%Y'))}
+**Ticket ID:** {sow.get('ticket_id', 'N/A')}
+**Created By:** {sow.get('created_by', 'PS Team')}
 
 ---
 
-## Executive Summary
-
-{sow.get('executive_summary', 'N/A')}
-
-## Business Goals
+## 1. Business Goal Vs Deliverables
 
 """
     for goal in sow.get('business_goals', []):
-        md += f"- {goal}\n"
+        md += f"### {goal.get('sno', '1')}. Use Case\n"
+        md += f"**Business Goal:** {goal.get('use_case', 'N/A')}\n\n"
+        md += f"**Deliverables:** {goal.get('deliverables', 'N/A')}\n\n"
 
-    md += "\n## Scope\n\n### In Scope\n\n"
-    for item in sow.get('scope', {}).get('in_scope', []):
-        md += f"- {item}\n"
-
-    md += "\n### Out of Scope\n\n"
-    for item in sow.get('scope', {}).get('out_of_scope', []):
-        md += f"- {item}\n"
-
-    md += "\n## Modules\n\n"
-    md += "| Module ID | Name | Description |\n"
-    md += "|-----------|------|-------------|\n"
-    for module in sow.get('modules', []):
-        md += f"| {module.get('id', '')} | {module.get('name', '')} | {module.get('description', '')} |\n"
-
-    md += "\n## Prerequisites\n\n"
-    md += "| Item | Owner | Status |\n"
-    md += "|------|-------|--------|\n"
+    md += "\n## 2. Prerequisites & Licenses\n\n"
     for prereq in sow.get('prerequisites', []):
-        md += f"| {prereq.get('item', '')} | {prereq.get('owner', '')} | {prereq.get('status', '')} |\n"
+        md += f"- {prereq}\n"
 
-    md += "\n## Timeline\n\n"
-    md += "| Phase | Activities | Duration |\n"
-    md += "|-------|------------|----------|\n"
-    for phase in sow.get('timeline', []):
-        md += f"| {phase.get('phase', '')} | {phase.get('activities', '')} | {phase.get('duration', '')} |\n"
+    md += "\n## 3. Details of Deliverables\n\n"
+    for idx, deliv in enumerate(sow.get('deliverables', []), 1):
+        md += f"### 3.{idx}. {deliv.get('title', 'Deliverable')}\n\n"
+        md += f"{deliv.get('description', 'N/A')}\n\n"
 
-    md += f"\n**Total Duration:** {sow.get('total_duration', 'TBD')}\n"
+    md += "\n## 4. Deployment & UAT Instance\n\n"
+    for dep in sow.get('deployment', []):
+        md += f"- {dep}\n"
 
-    md += "\n## Assumptions\n\n"
+    md += "\n## 5. Notes\n\n"
+    for note in sow.get('notes', []):
+        md += f"- {note}\n"
+
+    md += "\n## 6. Assumptions\n\n"
     for assumption in sow.get('assumptions', []):
         md += f"- {assumption}\n"
 
-    md += "\n## Acceptance Criteria\n\n"
-    for criteria in sow.get('acceptance_criteria', []):
-        md += f"- {criteria}\n"
+    md += "\n## 7. Annexure\n\n"
+    am = sow.get('account_manager', {})
+    md += f"### 7.1. Account Manager\n- Name: {am.get('name', 'TBD')}\n- Email: {am.get('email', 'TBD')}\n\n"
+
+    md += "### 7.2. Escalation Matrix for Scoping\n"
+    md += "| Level | Name | Phone | Email |\n|-------|------|-------|-------|\n"
+    for esc in sow.get('escalation_scoping', []):
+        md += f"| {esc.get('level', '')} | {esc.get('name', '')} | {esc.get('phone', '')} | {esc.get('email', '')} |\n"
+
+    md += "\n### 7.3. Escalation Matrix for Deployment\n"
+    md += "| Level | Name | Phone | Email |\n|-------|------|-------|-------|\n"
+    for esc in sow.get('escalation_deployment', []):
+        md += f"| {esc.get('level', '')} | {esc.get('name', '')} | {esc.get('phone', '')} | {esc.get('email', '')} |\n"
 
     return md
 
@@ -701,7 +818,7 @@ with st.sidebar:
     **Powered by:**
     - Gemini 3 Flash
     - 1,800+ historical SOWs
-    - 152 ECC modules
+    - Exotel SOW Template
     """)
 
 if not api_key:
@@ -788,28 +905,27 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
     with tab1:
         st.markdown(format_sow_markdown(sow_content))
 
-        # Download buttons - 3 columns for Word, JSON, Markdown
         col1, col2, col3 = st.columns(3)
         with col1:
             docx_data = generate_sow_docx(sow_content)
             st.download_button(
                 "📥 Download SOW (Word)",
                 data=docx_data,
-                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v1.0.0.docx",
+                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v{sow_content.get('version', '1.0.0')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
         with col2:
             st.download_button(
                 "📥 Download SOW (JSON)",
                 data=json.dumps(sow_content, indent=2),
-                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v1.0.0.json",
+                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v{sow_content.get('version', '1.0.0')}.json",
                 mime="application/json"
             )
         with col3:
             st.download_button(
                 "📥 Download SOW (Markdown)",
                 data=format_sow_markdown(sow_content),
-                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v1.0.0.md",
+                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v{sow_content.get('version', '1.0.0')}.md",
                 mime="text/markdown"
             )
 
