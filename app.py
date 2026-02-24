@@ -381,15 +381,32 @@ def format_sow_markdown(sow):
 st.markdown('<p class="main-header">📄 Exotel SOW Generator</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">AI-powered Statement of Work generator using Gemini 3 Flash</p>', unsafe_allow_html=True)
 
+# Get API key from secrets (Streamlit Cloud) or environment
+api_key = None
+
+# Try Streamlit secrets first (for Streamlit Cloud deployment)
+try:
+    api_key = st.secrets.get("GEMINI_API_KEY")
+except:
+    pass
+
+# Try environment variable
+if not api_key:
+    api_key = os.environ.get("GEMINI_API_KEY")
+
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    api_key = st.text_input(
-        "Gemini API Key",
-        type="password",
-        help="Get your API key from Google AI Studio"
-    )
+    # Only show API key input if not configured via secrets
+    if not api_key:
+        api_key = st.text_input(
+            "Gemini API Key",
+            type="password",
+            help="Get your API key from Google AI Studio"
+        )
+    else:
+        st.success("✅ API Key configured")
 
     st.divider()
 
@@ -414,7 +431,7 @@ with st.sidebar:
 
 # Main content
 if not api_key:
-    st.info("👈 Enter your Gemini API key in the sidebar to get started")
+    st.warning("⚠️ API Key not configured. Add GEMINI_API_KEY to Streamlit secrets or enter it in the sidebar.")
     st.stop()
 
 # Initialize model
