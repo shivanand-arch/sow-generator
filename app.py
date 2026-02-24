@@ -105,7 +105,7 @@ MODULE_CATALOG = {
 def init_gemini(api_key):
     """Initialize Gemini client"""
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-1.5-flash')
+    return genai.GenerativeModel('gemini-3-flash-preview')
 
 def extract_requirements(model, transcript):
     """Extract structured requirements from transcript"""
