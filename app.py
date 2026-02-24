@@ -14,6 +14,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 import numpy as np
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.style import WD_STYLE_TYPE
 
 # Page config
 st.set_page_config(
@@ -140,7 +145,6 @@ Return ONLY the JSON, no other text."""
     response = model.generate_content(prompt)
     text = response.text
 
-    # Extract JSON
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0]
     elif "```" in text:
@@ -439,6 +443,161 @@ def generate_flowchart_image(flowchart):
 
     return pdf_data, png_data
 
+def generate_sow_docx(sow):
+    """Generate a Word document from SOW content"""
+    doc = Document()
+
+    # Title
+    title = doc.add_heading(sow.get('title', 'Statement of Work'), 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Document info
+    doc.add_paragraph()
+    info_table = doc.add_table(rows=4, cols=2)
+    info_table.style = 'Table Grid'
+
+    info_data = [
+        ('Customer', sow.get('customer', 'N/A')),
+        ('Project', sow.get('project', 'N/A')),
+        ('Version', sow.get('version', '1.0.0')),
+        ('Date', sow.get('date', datetime.now().strftime('%Y-%m-%d')))
+    ]
+
+    for i, (label, value) in enumerate(info_data):
+        row = info_table.rows[i]
+        row.cells[0].text = label
+        row.cells[1].text = value
+        row.cells[0].paragraphs[0].runs[0].bold = True
+
+    doc.add_paragraph()
+
+    # Executive Summary
+    doc.add_heading('Executive Summary', level=1)
+    doc.add_paragraph(sow.get('executive_summary', 'N/A'))
+
+    # Business Goals
+    doc.add_heading('Business Goals', level=1)
+    for goal in sow.get('business_goals', []):
+        doc.add_paragraph(goal, style='List Bullet')
+
+    # Scope
+    doc.add_heading('Scope', level=1)
+    doc.add_heading('In Scope', level=2)
+    for item in sow.get('scope', {}).get('in_scope', []):
+        doc.add_paragraph(item, style='List Bullet')
+
+    doc.add_heading('Out of Scope', level=2)
+    for item in sow.get('scope', {}).get('out_of_scope', []):
+        doc.add_paragraph(item, style='List Bullet')
+
+    # Modules
+    doc.add_heading('Modules', level=1)
+    modules = sow.get('modules', [])
+    if modules:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        header_cells = table.rows[0].cells
+        header_cells[0].text = 'Module ID'
+        header_cells[1].text = 'Name'
+        header_cells[2].text = 'Description'
+        for cell in header_cells:
+            cell.paragraphs[0].runs[0].bold = True
+
+        for module in modules:
+            row = table.add_row().cells
+            row[0].text = module.get('id', '')
+            row[1].text = module.get('name', '')
+            row[2].text = module.get('description', '')
+
+    # Prerequisites
+    doc.add_heading('Prerequisites', level=1)
+    prereqs = sow.get('prerequisites', [])
+    if prereqs:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        header_cells = table.rows[0].cells
+        header_cells[0].text = 'Item'
+        header_cells[1].text = 'Owner'
+        header_cells[2].text = 'Status'
+        for cell in header_cells:
+            cell.paragraphs[0].runs[0].bold = True
+
+        for prereq in prereqs:
+            row = table.add_row().cells
+            row[0].text = prereq.get('item', '')
+            row[1].text = prereq.get('owner', '')
+            row[2].text = prereq.get('status', '')
+
+    # Timeline
+    doc.add_heading('Timeline', level=1)
+    timeline = sow.get('timeline', [])
+    if timeline:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        header_cells = table.rows[0].cells
+        header_cells[0].text = 'Phase'
+        header_cells[1].text = 'Activities'
+        header_cells[2].text = 'Duration'
+        for cell in header_cells:
+            cell.paragraphs[0].runs[0].bold = True
+
+        for phase in timeline:
+            row = table.add_row().cells
+            row[0].text = phase.get('phase', '')
+            row[1].text = phase.get('activities', '')
+            row[2].text = phase.get('duration', '')
+
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.add_run('Total Duration: ').bold = True
+    p.add_run(sow.get('total_duration', 'TBD'))
+
+    # Assumptions
+    doc.add_heading('Assumptions', level=1)
+    for assumption in sow.get('assumptions', []):
+        doc.add_paragraph(assumption, style='List Bullet')
+
+    # Dependencies
+    doc.add_heading('Dependencies', level=1)
+    for dep in sow.get('dependencies', []):
+        doc.add_paragraph(dep, style='List Bullet')
+
+    # Acceptance Criteria
+    doc.add_heading('Acceptance Criteria', level=1)
+    for criteria in sow.get('acceptance_criteria', []):
+        doc.add_paragraph(criteria, style='List Bullet')
+
+    # Escalation Matrix
+    doc.add_heading('Escalation Matrix', level=1)
+    escalation = sow.get('escalation_matrix', [])
+    if escalation:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        header_cells = table.rows[0].cells
+        header_cells[0].text = 'Level'
+        header_cells[1].text = 'Contact'
+        header_cells[2].text = 'Response Time'
+        for cell in header_cells:
+            cell.paragraphs[0].runs[0].bold = True
+
+        for esc in escalation:
+            row = table.add_row().cells
+            row[0].text = esc.get('level', '')
+            row[1].text = esc.get('contact', '')
+            row[2].text = esc.get('response_time', '')
+
+    # Footer
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.add_run('Generated by Exotel SOW Generator').italic = True
+
+    # Save to BytesIO
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 def format_sow_markdown(sow):
     """Format SOW as markdown for display"""
     md = f"""# {sow.get('title', 'Statement of Work')}
@@ -629,15 +788,24 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
     with tab1:
         st.markdown(format_sow_markdown(sow_content))
 
-        col1, col2 = st.columns(2)
+        # Download buttons - 3 columns for Word, JSON, Markdown
+        col1, col2, col3 = st.columns(3)
         with col1:
+            docx_data = generate_sow_docx(sow_content)
+            st.download_button(
+                "📥 Download SOW (Word)",
+                data=docx_data,
+                file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v1.0.0.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        with col2:
             st.download_button(
                 "📥 Download SOW (JSON)",
                 data=json.dumps(sow_content, indent=2),
                 file_name=f"SOW_{sow_content.get('customer', 'Customer').replace(' ', '_')}_v1.0.0.json",
                 mime="application/json"
             )
-        with col2:
+        with col3:
             st.download_button(
                 "📥 Download SOW (Markdown)",
                 data=format_sow_markdown(sow_content),
