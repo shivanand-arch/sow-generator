@@ -271,7 +271,6 @@ def generate_drawio_xml(flowchart):
         "disconnect": "ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;"
     }
 
-    # Calculate positions
     nodes = flowchart.get("nodes", [])
     edges = flowchart.get("edges", [])
 
@@ -297,7 +296,6 @@ def generate_drawio_xml(flowchart):
 
         y_pos += height + 60
 
-    # Add edges
     for i, edge in enumerate(edges):
         from_id = edge.get("from", "")
         to_id = edge.get("to", "")
@@ -328,7 +326,6 @@ def generate_flowchart_image(flowchart):
     edges = flowchart.get("edges", [])
     title = flowchart.get("title", "IVR Flow")
 
-    # Color mapping for node types
     colors = {
         "start": "#d5e8d4",
         "end": "#f8cecc",
@@ -349,7 +346,6 @@ def generate_flowchart_image(flowchart):
         "disconnect": "#b85450"
     }
 
-    # Calculate figure size based on number of nodes
     fig_height = max(8, len(nodes) * 1.5)
     fig, ax = plt.subplots(1, 1, figsize=(10, fig_height))
     ax.set_xlim(0, 10)
@@ -357,11 +353,9 @@ def generate_flowchart_image(flowchart):
     ax.set_aspect('equal')
     ax.axis('off')
 
-    # Title
     ax.text(5, fig_height - 0.5, title, fontsize=16, fontweight='bold',
             ha='center', va='top')
 
-    # Position nodes
     node_positions = {}
     y_pos = fig_height - 1.5
     x_center = 5
@@ -375,32 +369,26 @@ def generate_flowchart_image(flowchart):
 
         node_positions[node_id] = (x_center, y_pos)
 
-        # Draw node based on type
         if node_type in ["start", "end", "disconnect"]:
-            # Ellipse for start/end
             ellipse = mpatches.Ellipse((x_center, y_pos), 3, 0.8,
                                         facecolor=color, edgecolor=edge_color, linewidth=2)
             ax.add_patch(ellipse)
         elif node_type == "decision":
-            # Diamond for decision
             diamond = plt.Polygon([(x_center, y_pos + 0.5), (x_center + 1.5, y_pos),
                                    (x_center, y_pos - 0.5), (x_center - 1.5, y_pos)],
                                   facecolor=color, edgecolor=edge_color, linewidth=2)
             ax.add_patch(diamond)
         else:
-            # Rectangle for process/api/queue
             rect = FancyBboxPatch((x_center - 1.5, y_pos - 0.4), 3, 0.8,
                                    boxstyle="round,pad=0.05,rounding_size=0.2",
                                    facecolor=color, edgecolor=edge_color, linewidth=2)
             ax.add_patch(rect)
 
-        # Add label
         ax.text(x_center, y_pos, label, fontsize=9, ha='center', va='center',
                 wrap=True, fontweight='medium')
 
         y_pos -= 1.3
 
-    # Draw edges (arrows)
     for edge in edges:
         from_id = edge.get("from", "")
         to_id = edge.get("to", "")
@@ -410,18 +398,15 @@ def generate_flowchart_image(flowchart):
             from_pos = node_positions[from_id]
             to_pos = node_positions[to_id]
 
-            # Draw arrow
             ax.annotate("", xy=(to_pos[0], to_pos[1] + 0.45),
                        xytext=(from_pos[0], from_pos[1] - 0.45),
                        arrowprops=dict(arrowstyle="->", color="#666666", lw=1.5))
 
-            # Add edge label if present
             if edge_label:
                 mid_y = (from_pos[1] + to_pos[1]) / 2
                 ax.text(x_center + 0.3, mid_y, edge_label, fontsize=8,
                        ha='left', va='center', color="#666666")
 
-    # Add legend
     legend_y = 0.8
     legend_items = [
         ("Start/End", "#d5e8d4", "#82b366"),
@@ -440,13 +425,11 @@ def generate_flowchart_image(flowchart):
 
     plt.tight_layout()
 
-    # Save to BytesIO
     buf = BytesIO()
     plt.savefig(buf, format='pdf', bbox_inches='tight', dpi=150)
     buf.seek(0)
     pdf_data = buf.getvalue()
 
-    # Also create PNG for preview
     buf_png = BytesIO()
     plt.savefig(buf_png, format='png', bbox_inches='tight', dpi=150)
     buf_png.seek(0)
@@ -519,24 +502,19 @@ def format_sow_markdown(sow):
 st.markdown('<p class="main-header">📄 Exotel SOW Generator</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">AI-powered Statement of Work generator using Gemini 3 Flash</p>', unsafe_allow_html=True)
 
-# Get API key from secrets (Streamlit Cloud) or environment
 api_key = None
 
-# Try Streamlit secrets first (for Streamlit Cloud deployment)
 try:
     api_key = st.secrets.get("GEMINI_API_KEY")
 except:
     pass
 
-# Try environment variable
 if not api_key:
     api_key = os.environ.get("GEMINI_API_KEY")
 
-# Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    # Only show API key input if not configured via secrets
     if not api_key:
         api_key = st.text_input(
             "Gemini API Key",
@@ -567,19 +545,16 @@ with st.sidebar:
     - 152 ECC modules
     """)
 
-# Main content
 if not api_key:
     st.warning("⚠️ API Key not configured. Add GEMINI_API_KEY to Streamlit secrets or enter it in the sidebar.")
     st.stop()
 
-# Initialize model
 try:
     model = init_gemini(api_key)
 except Exception as e:
     st.error(f"Failed to initialize Gemini: {e}")
     st.stop()
 
-# File upload
 st.header("📤 Upload Call Transcript")
 
 uploaded_file = st.file_uploader(
@@ -588,16 +563,13 @@ uploaded_file = st.file_uploader(
     help="Supported formats: TXT, PDF, MD"
 )
 
-# Or paste text
 transcript_text = st.text_area(
     "Or paste your transcript here:",
     height=200,
     placeholder="Paste your call transcript, meeting notes, or requirements here..."
 )
 
-# Process button
 if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
-    # Get transcript
     transcript = ""
 
     if uploaded_file:
@@ -623,7 +595,6 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
         st.warning("Transcript seems too short. Please provide more details.")
         st.stop()
 
-    # Generate SOW
     with st.spinner("🔍 Analyzing transcript..."):
         try:
             requirements = extract_requirements(model, transcript)
@@ -650,17 +621,14 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
             flowchart = None
             drawio_xml = None
 
-    # Display results
     st.divider()
     st.header("📋 Generated SOW")
 
-    # Tabs for different views
     tab1, tab2, tab3 = st.tabs(["📄 SOW Document", "🔍 Requirements", "📊 Flowchart"])
 
     with tab1:
         st.markdown(format_sow_markdown(sow_content))
 
-        # Download buttons
         col1, col2 = st.columns(2)
         with col1:
             st.download_button(
@@ -685,14 +653,11 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
         if flowchart and drawio_xml:
             st.subheader("Flow Diagram")
 
-            # Generate visual flowchart
             try:
                 pdf_data, png_data = generate_flowchart_image(flowchart)
 
-                # Show PNG preview
                 st.image(png_data, caption="IVR Flow Diagram", use_container_width=True)
 
-                # Download buttons
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.download_button(
@@ -725,26 +690,14 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
                     mime="application/xml"
                 )
 
-            # Show JSON structure in expander
             with st.expander("View Flow Structure (JSON)"):
                 st.json(flowchart)
         else:
             st.info("Flowchart not available")
 
-# Footer
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: #6B7280; font-size: 0.9rem;">
     Built with ❤️ by Exotel PS Team | Powered by Gemini 3 Flash
 </div>
 """, unsafe_allow_html=True)
-```
----
-
-Also update **requirements.txt** to:
-```
-streamlit>=1.32.0
-google-generativeai>=0.4.0
-PyPDF2>=3.0.0
-matplotlib>=3.7.0
-numpy>=1.24.0
