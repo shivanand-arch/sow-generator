@@ -1,0 +1,50 @@
+{
+  "name": "exotel-sow-generator",
+  "version": "1.0.0",
+  "description": "AI-powered Statement of Work generator with RAG-based learning from 1800+ historical SOWs",
+  "main": "src/index.js",
+  "bin": {
+    "sow-gen": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "cli": "node src/cli.js",
+    "index-sows": "node src/indexer/sow-indexer.js",
+    "index-gdrive": "node src/indexer/gdrive-indexer.js",
+    "server": "node src/server.js",
+    "test": "jest",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@qdrant/js-client-rest": "^1.9.0",
+    "commander": "^12.0.0",
+    "docx": "^8.5.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "googleapis": "^134.0.0",
+    "mammoth": "^1.6.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "uuid": "^9.0.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "sow",
+    "statement-of-work",
+    "ai",
+    "gemini",
+    "rag",
+    "document-generation",
+    "exotel"
+  ],
+  "author": "Exotel PS Team",
+  "license": "MIT"
+}
