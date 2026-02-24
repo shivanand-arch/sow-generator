@@ -10,6 +10,10 @@ import tempfile
 import os
 from datetime import datetime
 from io import BytesIO
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+import numpy as np
 
 # Page config
 st.set_page_config(
@@ -318,6 +322,140 @@ def generate_drawio_xml(flowchart):
 
     return xml
 
+def generate_flowchart_image(flowchart):
+    """Generate a visual flowchart image using matplotlib"""
+    nodes = flowchart.get("nodes", [])
+    edges = flowchart.get("edges", [])
+    title = flowchart.get("title", "IVR Flow")
+
+    # Color mapping for node types
+    colors = {
+        "start": "#d5e8d4",
+        "end": "#f8cecc",
+        "process": "#dae8fc",
+        "decision": "#fff2cc",
+        "api": "#e1d5e7",
+        "queue": "#d5e8fc",
+        "disconnect": "#f8cecc"
+    }
+
+    edge_colors = {
+        "start": "#82b366",
+        "end": "#b85450",
+        "process": "#6c8ebf",
+        "decision": "#d6b656",
+        "api": "#9673a6",
+        "queue": "#6c8ebf",
+        "disconnect": "#b85450"
+    }
+
+    # Calculate figure size based on number of nodes
+    fig_height = max(8, len(nodes) * 1.5)
+    fig, ax = plt.subplots(1, 1, figsize=(10, fig_height))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, fig_height)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    # Title
+    ax.text(5, fig_height - 0.5, title, fontsize=16, fontweight='bold',
+            ha='center', va='top')
+
+    # Position nodes
+    node_positions = {}
+    y_pos = fig_height - 1.5
+    x_center = 5
+
+    for i, node in enumerate(nodes):
+        node_id = node.get("id", f"node_{i}")
+        node_type = node.get("type", "process")
+        label = node.get("label", "")
+        color = colors.get(node_type, colors["process"])
+        edge_color = edge_colors.get(node_type, edge_colors["process"])
+
+        node_positions[node_id] = (x_center, y_pos)
+
+        # Draw node based on type
+        if node_type in ["start", "end", "disconnect"]:
+            # Ellipse for start/end
+            ellipse = mpatches.Ellipse((x_center, y_pos), 3, 0.8,
+                                        facecolor=color, edgecolor=edge_color, linewidth=2)
+            ax.add_patch(ellipse)
+        elif node_type == "decision":
+            # Diamond for decision
+            diamond = plt.Polygon([(x_center, y_pos + 0.5), (x_center + 1.5, y_pos),
+                                   (x_center, y_pos - 0.5), (x_center - 1.5, y_pos)],
+                                  facecolor=color, edgecolor=edge_color, linewidth=2)
+            ax.add_patch(diamond)
+        else:
+            # Rectangle for process/api/queue
+            rect = FancyBboxPatch((x_center - 1.5, y_pos - 0.4), 3, 0.8,
+                                   boxstyle="round,pad=0.05,rounding_size=0.2",
+                                   facecolor=color, edgecolor=edge_color, linewidth=2)
+            ax.add_patch(rect)
+
+        # Add label
+        ax.text(x_center, y_pos, label, fontsize=9, ha='center', va='center',
+                wrap=True, fontweight='medium')
+
+        y_pos -= 1.3
+
+    # Draw edges (arrows)
+    for edge in edges:
+        from_id = edge.get("from", "")
+        to_id = edge.get("to", "")
+        edge_label = edge.get("label", "")
+
+        if from_id in node_positions and to_id in node_positions:
+            from_pos = node_positions[from_id]
+            to_pos = node_positions[to_id]
+
+            # Draw arrow
+            ax.annotate("", xy=(to_pos[0], to_pos[1] + 0.45),
+                       xytext=(from_pos[0], from_pos[1] - 0.45),
+                       arrowprops=dict(arrowstyle="->", color="#666666", lw=1.5))
+
+            # Add edge label if present
+            if edge_label:
+                mid_y = (from_pos[1] + to_pos[1]) / 2
+                ax.text(x_center + 0.3, mid_y, edge_label, fontsize=8,
+                       ha='left', va='center', color="#666666")
+
+    # Add legend
+    legend_y = 0.8
+    legend_items = [
+        ("Start/End", "#d5e8d4", "#82b366"),
+        ("Process", "#dae8fc", "#6c8ebf"),
+        ("Decision", "#fff2cc", "#d6b656"),
+        ("API Call", "#e1d5e7", "#9673a6"),
+        ("Queue", "#d5e8fc", "#6c8ebf"),
+    ]
+
+    for i, (name, fc, ec) in enumerate(legend_items):
+        rect = FancyBboxPatch((0.3, legend_y - i * 0.4), 0.4, 0.25,
+                               boxstyle="round,pad=0.02",
+                               facecolor=fc, edgecolor=ec, linewidth=1)
+        ax.add_patch(rect)
+        ax.text(0.9, legend_y - i * 0.4 + 0.12, name, fontsize=7, va='center')
+
+    plt.tight_layout()
+
+    # Save to BytesIO
+    buf = BytesIO()
+    plt.savefig(buf, format='pdf', bbox_inches='tight', dpi=150)
+    buf.seek(0)
+    pdf_data = buf.getvalue()
+
+    # Also create PNG for preview
+    buf_png = BytesIO()
+    plt.savefig(buf_png, format='png', bbox_inches='tight', dpi=150)
+    buf_png.seek(0)
+    png_data = buf_png.getvalue()
+
+    plt.close()
+
+    return pdf_data, png_data
+
 def format_sow_markdown(sow):
     """Format SOW as markdown for display"""
     md = f"""# {sow.get('title', 'Statement of Work')}
@@ -546,14 +684,50 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
     with tab3:
         if flowchart and drawio_xml:
             st.subheader("Flow Diagram")
-            st.json(flowchart)
 
-            st.download_button(
-                "📥 Download Flowchart (.drawio)",
-                data=drawio_xml,
-                file_name=f"{sow_content.get('project', 'Flow').replace(' ', '_')}_flow.drawio",
-                mime="application/xml"
-            )
+            # Generate visual flowchart
+            try:
+                pdf_data, png_data = generate_flowchart_image(flowchart)
+
+                # Show PNG preview
+                st.image(png_data, caption="IVR Flow Diagram", use_container_width=True)
+
+                # Download buttons
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.download_button(
+                        "📥 Download PDF",
+                        data=pdf_data,
+                        file_name=f"{sow_content.get('project', 'Flow').replace(' ', '_')}_flow.pdf",
+                        mime="application/pdf"
+                    )
+                with col2:
+                    st.download_button(
+                        "📥 Download PNG",
+                        data=png_data,
+                        file_name=f"{sow_content.get('project', 'Flow').replace(' ', '_')}_flow.png",
+                        mime="image/png"
+                    )
+                with col3:
+                    st.download_button(
+                        "📥 Download .drawio",
+                        data=drawio_xml,
+                        file_name=f"{sow_content.get('project', 'Flow').replace(' ', '_')}_flow.drawio",
+                        mime="application/xml"
+                    )
+            except Exception as e:
+                st.warning(f"Could not generate visual flowchart: {e}")
+                st.json(flowchart)
+                st.download_button(
+                    "📥 Download Flowchart (.drawio)",
+                    data=drawio_xml,
+                    file_name=f"{sow_content.get('project', 'Flow').replace(' ', '_')}_flow.drawio",
+                    mime="application/xml"
+                )
+
+            # Show JSON structure in expander
+            with st.expander("View Flow Structure (JSON)"):
+                st.json(flowchart)
         else:
             st.info("Flowchart not available")
 
@@ -564,3 +738,14 @@ st.markdown("""
     Built with ❤️ by Exotel PS Team | Powered by Gemini 3 Flash
 </div>
 """, unsafe_allow_html=True)
+```
+
+---
+
+Also update **requirements.txt** to:
+```
+streamlit>=1.32.0
+google-generativeai>=0.4.0
+PyPDF2>=3.0.0
+matplotlib>=3.7.0
+numpy>=1.24.0
