@@ -1,10 +1,10 @@
 """
 Exotel SOW Generator - Streamlit UI
-AI-powered Statement of Work generator using Gemini 3 Flash
+AI-powered Statement of Work generator using Claude Sonnet
 """
 
 import streamlit as st
-import google.generativeai as genai
+import anthropic
 import json
 import tempfile
 import os
@@ -113,12 +113,25 @@ MODULE_CATALOG = {
     }
 }
 
-def init_gemini(api_key):
-    """Initialize Gemini client"""
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-3-flash-preview')
+CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 
-def extract_requirements(model, transcript):
+def init_claude(api_key):
+    """Initialize Anthropic Claude client"""
+    client = anthropic.Anthropic(api_key=api_key)
+    return client
+
+def call_claude(client, prompt, max_tokens=4096):
+    """Make a call to Claude API and return the text response"""
+    message = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return message.content[0].text
+
+def extract_requirements(client, transcript):
     """Extract structured requirements from transcript"""
     prompt = f"""You are an expert at analyzing call transcripts for Exotel, a cloud communications platform.
 
@@ -144,8 +157,7 @@ Return a valid JSON object with:
 
 Return ONLY the JSON, no other text."""
 
-    response = model.generate_content(prompt)
-    text = response.text
+    text = call_claude(client, prompt)
 
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0]
@@ -154,7 +166,7 @@ Return ONLY the JSON, no other text."""
 
     return json.loads(text.strip())
 
-def generate_sow_content(model, requirements):
+def generate_sow_content(client, requirements):
     """Generate full SOW content in Exotel format"""
     prompt = f"""You are an expert technical writer for Exotel/Ameyo cloud communications platform.
 
@@ -232,8 +244,7 @@ IMPORTANT:
 
 Return ONLY the JSON."""
 
-    response = model.generate_content(prompt)
-    text = response.text
+    text = call_claude(client, prompt, max_tokens=8192)
 
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0]
@@ -242,7 +253,7 @@ Return ONLY the JSON."""
 
     return json.loads(text.strip())
 
-def generate_flowchart_structure(model, requirements):
+def generate_flowchart_structure(client, requirements):
     """Generate flowchart structure"""
     prompt = f"""You are an expert at creating IVR and call flow diagrams.
 
@@ -281,8 +292,7 @@ Node types: start, end, process, decision, api, queue, disconnect
 
 Return ONLY the JSON."""
 
-    response = model.generate_content(prompt)
-    text = response.text
+    text = call_claude(client, prompt)
 
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0]
@@ -776,26 +786,26 @@ def format_sow_markdown(sow):
 
 # Main UI
 st.markdown('<p class="main-header">📄 Exotel SOW Generator</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">AI-powered Statement of Work generator using Gemini 3 Flash</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI-powered Statement of Work generator using Claude Sonnet</p>', unsafe_allow_html=True)
 
 api_key = None
 
 try:
-    api_key = st.secrets.get("GEMINI_API_KEY")
+    api_key = st.secrets.get("ANTHROPIC_API_KEY")
 except:
     pass
 
 if not api_key:
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
 
 with st.sidebar:
     st.header("⚙️ Configuration")
 
     if not api_key:
         api_key = st.text_input(
-            "Gemini API Key",
+            "Anthropic API Key",
             type="password",
-            help="Get your API key from Google AI Studio"
+            help="Get your API key from console.anthropic.com"
         )
     else:
         st.success("✅ API Key configured")
@@ -816,19 +826,19 @@ with st.sidebar:
     This tool generates professional SOW documents from call transcripts using AI.
 
     **Powered by:**
-    - Gemini 3 Flash
+    - Claude Sonnet (Anthropic)
     - 1,800+ historical SOWs
     - Exotel SOW Template
     """)
 
 if not api_key:
-    st.warning("⚠️ API Key not configured. Add GEMINI_API_KEY to Streamlit secrets or enter it in the sidebar.")
+    st.warning("⚠️ API Key not configured. Add ANTHROPIC_API_KEY to Streamlit secrets or enter it in the sidebar.")
     st.stop()
 
 try:
-    model = init_gemini(api_key)
+    client = init_claude(api_key)
 except Exception as e:
-    st.error(f"Failed to initialize Gemini: {e}")
+    st.error(f"Failed to initialize Claude: {e}")
     st.stop()
 
 st.header("📤 Upload Call Transcript")
@@ -873,7 +883,7 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
 
     with st.spinner("🔍 Analyzing transcript..."):
         try:
-            requirements = extract_requirements(model, transcript)
+            requirements = extract_requirements(client, transcript)
             st.success("✅ Requirements extracted!")
         except Exception as e:
             st.error(f"Failed to extract requirements: {e}")
@@ -881,7 +891,7 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
 
     with st.spinner("📝 Generating SOW..."):
         try:
-            sow_content = generate_sow_content(model, requirements)
+            sow_content = generate_sow_content(client, requirements)
             st.success("✅ SOW generated!")
         except Exception as e:
             st.error(f"Failed to generate SOW: {e}")
@@ -889,7 +899,7 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
 
     with st.spinner("📊 Creating flowchart..."):
         try:
-            flowchart = generate_flowchart_structure(model, requirements)
+            flowchart = generate_flowchart_structure(client, requirements)
             drawio_xml = generate_drawio_xml(flowchart)
             st.success("✅ Flowchart created!")
         except Exception as e:
@@ -982,6 +992,6 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: #6B7280; font-size: 0.9rem;">
-    Built with ❤️ by Exotel PS Team | Powered by Gemini 3 Flash
+    Built with ❤️ by Exotel PS Team | Powered by Claude Sonnet (Anthropic)
 </div>
 """, unsafe_allow_html=True)
