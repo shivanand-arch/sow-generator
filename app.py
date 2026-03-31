@@ -166,18 +166,77 @@ Return ONLY the JSON, no other text."""
 
     return json.loads(text.strip())
 
-def generate_sow_content(client, requirements):
-    """Generate full SOW content in Exotel format"""
-    prompt = f"""You are an expert technical writer for Exotel/Ameyo cloud communications platform.
+# Max characters of example SOW text sent to the model (keeps prompts bounded)
+MAX_REFERENCE_CHARS = 45000
+
+
+def truncate_reference_text(text, max_chars=MAX_REFERENCE_CHARS):
+    if not text or not str(text).strip():
+        return ""
+    t = str(text).strip()
+    if len(t) <= max_chars:
+        return t
+    return t[:max_chars] + "\n\n[... truncated for length; match style from the text above ...]"
+
+
+def extract_text_from_reference_file(uploaded_file):
+    """Plain text from a reference SOW upload (.docx, .pdf, .txt, .md)."""
+    if uploaded_file is None:
+        return ""
+    name = (getattr(uploaded_file, "name", None) or "").lower()
+    raw = uploaded_file.read()
+    try:
+        if name.endswith(".docx"):
+            ref_doc = Document(BytesIO(raw))
+            parts = []
+            for p in ref_doc.paragraphs:
+                if p.text.strip():
+                    parts.append(p.text)
+            for table in ref_doc.tables:
+                for row in table.rows:
+                    parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+            return "\n".join(parts)
+        if name.endswith(".pdf"):
+            import PyPDF2
+            reader = PyPDF2.PdfReader(BytesIO(raw))
+            return "\n".join((page.extract_text() or "") for page in reader.pages)
+        return raw.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def generate_sow_content(client, requirements, reference_sow_text=""):
+    """Generate full SOW content in Exotel format (customer-friendly; optional style from example SOWs)."""
+    ref_block = ""
+    if reference_sow_text and reference_sow_text.strip():
+        ref_block = f"""
+## Example SOW material (match this style — not the facts)
+The following excerpts are from real SOWs your team provided. Use them ONLY to mirror **tone, length, formality, and how much technical detail** to show. Do **not** copy customer names, dates, or unrelated scope. If examples are concise, stay concise; if they use simple language, do the same.
+
+{reference_sow_text.strip()}
+
+---
+"""
+
+    prompt = f"""You are a senior professional-services writer for Exotel/Ameyo. Your audience is **the customer's business stakeholders** — they may not know telecom or integration jargon.
 
 ## Task
-Generate a detailed Statement of Work (SOW) based on these requirements, following the exact Exotel SOW format.
+Generate a Statement of Work (SOW) from the requirements below. Keep the **same JSON field names and overall Exotel section logic** as specified, but write so a non-technical reader can follow it.
 
-## Requirements:
+{ref_block}
+## Requirements (from discovery / transcript):
 {json.dumps(requirements, indent=2)}
 
-## Available Modules:
+## Available Modules (reference only — describe outcomes in plain language):
 {json.dumps(MODULE_CATALOG, indent=2)}
+
+## Writing rules (must follow)
+- **Short and scannable**: Prefer clear sentences and short paragraphs. Avoid long essays.
+- **Outcome-focused**: Say *what the customer gets* and *how they'll use it*, not low-level implementation (no SIP stacks, API verbs, protocol names) unless the example SOWs clearly use that level of detail.
+- **Plain language**: If a technical term is needed, add a brief plain-English phrase in the same sentence (e.g. "connect to your CRM (customer database)").
+- **Deliverables**: Each `deliverables[].description` should be **at most 2 short paragraphs** OR the equivalent in short bullet-style sentences in one string — **not** multi-page technical specs.
+- **business_goals**: `use_case` and `deliverables` columns should read like a clear table a customer would sign off on.
+- **prerequisites / deployment / notes / assumptions**: Practical, polite, minimal jargon — similar to standard customer SOWs.
 
 ## Output Format:
 Return a JSON object with this EXACT structure:
@@ -192,23 +251,21 @@ Return a JSON object with this EXACT structure:
     "business_goals": [
         {{
             "sno": "1",
-            "use_case": "Detailed description of the business goal or use case the customer wants to achieve",
-            "deliverables": "What Exotel team will deliver to meet this goal"
+            "use_case": "What the customer wants to achieve, in plain language",
+            "deliverables": "What Exotel will deliver, in plain language (concise)"
         }}
     ],
     "prerequisites": [
-        "Prerequisite 1 that customer team needs to provide",
-        "Prerequisite 2"
+        "Short bullet the customer understands"
     ],
     "deliverables": [
         {{
-            "title": "Deliverable Title (e.g., Call Transfer from VoiceBot to ECC)",
-            "description": "Detailed multi-paragraph description of what will be implemented, how it works technically, the flow, and expected behavior. Be specific about SIP, API, routing logic, etc."
+            "title": "Short, clear title (no internal codes unless examples use them)",
+            "description": "1–2 short paragraphs max: what this item is, what 'done' looks like for the customer, in friendly language"
         }}
     ],
     "deployment": [
-        "Deployment will be done in a single setup.",
-        "Specific deployment details about campaigns, instances, etc."
+        "Brief, customer-readable deployment / rollout points"
     ],
     "notes": [
         "Important note about scope validity",
@@ -236,12 +293,6 @@ Return a JSON object with this EXACT structure:
     ]
 }}
 
-IMPORTANT:
-- Be very detailed in the deliverables description - write multiple paragraphs explaining the technical implementation
-- Use professional language similar to: "Client team wants to enable...", "The system will...", "During the process..."
-- Include technical details about SIP, API, routing, campaigns where relevant
-- Make assumptions realistic for a cloud communications deployment
-
 Return ONLY the JSON."""
 
     text = call_claude(client, prompt, max_tokens=8192)
@@ -255,10 +306,10 @@ Return ONLY the JSON."""
 
 def generate_flowchart_structure(client, requirements):
     """Generate flowchart structure"""
-    prompt = f"""You are an expert at creating IVR and call flow diagrams.
+    prompt = f"""You are an expert at creating simple call-flow diagrams for business readers.
 
 ## Task
-Generate a flowchart structure for these requirements.
+Generate a flowchart structure for these requirements. **Node labels must be short, plain English** (what a customer would understand). Avoid jargon and acronyms unless the requirements already use them.
 
 ## Requirements:
 {json.dumps(requirements, indent=2)}
@@ -855,6 +906,23 @@ transcript_text = st.text_area(
     placeholder="Paste your call transcript, meeting notes, or requirements here..."
 )
 
+with st.expander("Optional: example SOWs (style the new SOW should follow)", expanded=False):
+    st.caption(
+        "Upload or paste excerpts from SOWs you already like. The generator will match **tone, length, and how technical** the writing is—not copy unrelated customer names, dates, or scope."
+    )
+    reference_uploads = st.file_uploader(
+        "Reference SOW files",
+        type=["txt", "pdf", "md", "docx"],
+        accept_multiple_files=True,
+        help="Good-quality .docx or PDF SOWs work best. Text is truncated if very long.",
+    )
+    reference_paste = st.text_area(
+        "Or paste reference SOW excerpts",
+        height=140,
+        placeholder="Paste parts of a customer-friendly SOW you want new outputs to resemble…",
+        key="reference_sow_paste",
+    )
+
 if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
     transcript = ""
 
@@ -881,6 +949,16 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
         st.warning("Transcript seems too short. Please provide more details.")
         st.stop()
 
+    reference_parts = []
+    if reference_paste and reference_paste.strip():
+        reference_parts.append(reference_paste.strip())
+    if reference_uploads:
+        for ref_file in reference_uploads:
+            extracted = extract_text_from_reference_file(ref_file)
+            if extracted and extracted.strip():
+                reference_parts.append(f"--- From file: {ref_file.name} ---\n{extracted.strip()}")
+    reference_sow_text = truncate_reference_text("\n\n".join(reference_parts))
+
     with st.spinner("🔍 Analyzing transcript..."):
         try:
             requirements = extract_requirements(client, transcript)
@@ -891,7 +969,7 @@ if st.button("🚀 Generate SOW", type="primary", use_container_width=True):
 
     with st.spinner("📝 Generating SOW..."):
         try:
-            sow_content = generate_sow_content(client, requirements)
+            sow_content = generate_sow_content(client, requirements, reference_sow_text)
             st.success("✅ SOW generated!")
         except Exception as e:
             st.error(f"Failed to generate SOW: {e}")
