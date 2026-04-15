@@ -30,3 +30,22 @@ coverage/
 # Build artifacts
 dist/
 build/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# v2 runtime artifacts
+v2/output/
+v2/logs/
+v2/__pycache__/
+v2/scripts/__pycache__/
+v2/evals/
+v2/prompts/
+experiments.tsv
+
+# Claude worktree artifacts
+admiring-johnson/
+funny-almeida/
+keen-gates/
+trusting-bohr/
